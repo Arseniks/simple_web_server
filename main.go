@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"time"
 )
 
 type person struct {
@@ -50,7 +51,11 @@ func main() {
 	http.HandleFunc("/person/", personHandler)
 
 	log.Println("Staring server on: http://localhost:8080 ")
-	err := http.ListenAndServe(":8080", nil)
+	server := http.Server{
+		Addr:              "localhost:8080",
+		ReadHeaderTimeout: time.Second * 2,
+	}
+	err := server.ListenAndServe()
 	if err != nil {
 		fmt.Println(err)
 		return
