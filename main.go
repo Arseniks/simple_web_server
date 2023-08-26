@@ -21,8 +21,11 @@ func personHandler(writer http.ResponseWriter, request *http.Request) {
 
 	switch request.Method {
 	case "GET":
-		response, _ := json.Marshal(arseniy)
-		_, err := writer.Write(response)
+		response, err := json.Marshal(arseniy)
+		if err != nil {
+			http.Error(writer, err.Error(), http.StatusInternalServerError)
+		}
+		_, err = writer.Write(response)
 		if err != nil {
 			http.Error(writer, err.Error(), http.StatusInternalServerError)
 		}
@@ -49,6 +52,7 @@ func main() {
 	log.Println("Staring server on: http://localhost:8080 ")
 	err := http.ListenAndServe(":8080", nil)
 	if err != nil {
+		fmt.Println(err)
 		return
 	}
 }
