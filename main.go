@@ -1,11 +1,20 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
+	"os/signal"
+	"syscall"
 	"time"
+)
+
+const (
+	listenAddr      = "127.0.0.1:8080"
+	shutdownTimeout = 5 * time.Second
 )
 
 type person struct {
@@ -19,7 +28,6 @@ var arseniy = &person{
 }
 
 func personHandler(writer http.ResponseWriter, request *http.Request) {
-
 	switch request.Method {
 	case "GET":
 		response, err := json.Marshal(arseniy)
@@ -48,16 +56,52 @@ func personHandler(writer http.ResponseWriter, request *http.Request) {
 }
 
 func main() {
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	if err := runServer(ctx); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func runServer(ctx context.Context) error {
+	server := http.Server{
+		Addr: listenAddr,
+	}
+
 	http.HandleFunc("/person/", personHandler)
 
-	log.Println("Staring server on: http://localhost:8080 ")
-	server := http.Server{
-		Addr:              "localhost:8080",
-		ReadHeaderTimeout: time.Second * 2,
+	go func() {
+		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Fatalf("Listen and serve: %v", err)
+		}
+	}()
+
+	log.Printf("Listening on %s", listenAddr)
+	<-ctx.Done()
+
+	log.Println("Shutting down server gracefully")
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+	defer cancel()
+
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		return fmt.Errorf("shutdown: %w", err)
 	}
-	err := server.ListenAndServe()
-	if err != nil {
-		fmt.Println(err)
-		return
+
+	longShutdown := make(chan bool)
+
+	go func() {
+		time.Sleep(3 * time.Second)
+		longShutdown <- true
+	}()
+
+	select {
+	case <-shutdownCtx.Done():
+		return fmt.Errorf("server shutdown: %w", ctx.Err())
+	case <-longShutdown:
+		log.Println("Finished")
 	}
+
+	return nil
 }
